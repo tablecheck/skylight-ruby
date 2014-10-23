@@ -39,10 +39,11 @@ module Skylight
           OCTET_STREAM = "application/octet-stream".freeze
           ATTACHMENT = "attachment".freeze
 
-          def initialize(*)
+          def initialize(config)
             super
 
             @mimes = Mime::SET.reduce({}) do |hash, mime|
+              config.logger.debug "send_file mimes; mime=#{mime.inspect}; to_s=#{mime.to_s}; class=#{mime.to_s.class}"
               hash[mime.symbol] = mime.to_s.dup.freeze
               hash
             end

@@ -37,6 +37,7 @@ module Skylight
 
       # == Instrumenter ==
       "IGNORED_ENDPOINT" => :'ignored_endpoint',
+      "THROTTLE_RATE"    => :'throttle_rate',
 
       # == Skylight Remote ==
       "AUTH_URL"                     => :'auth_url',
@@ -417,6 +418,14 @@ authentication: #{self[:authentication]}
           val.concat(Array(get(:'ignored_endpoints')))
           val
         end
+    end
+
+    # @api private
+    def throttle_rate
+      @throttle_rate ||=
+        begin
+          get(:'throttle_rate')
+        end || 0
     end
 
     def root

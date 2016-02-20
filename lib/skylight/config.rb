@@ -39,6 +39,7 @@ module Skylight
       "IGNORED_ENDPOINT" => :'ignored_endpoint',
       "IGNORED_ENDPOINTS" => :'ignored_endpoints',
       "SQL_MODE" => :'sql_mode',
+      "THROTTLE_RATE" => :'throttle_rate',
 
       # == Skylight Remote ==
       "AUTH_URL"                     => :'auth_url',
@@ -460,6 +461,14 @@ authentication: #{self[:authentication]}
           val.concat(Array(ignored_endpoints))
           val
         end
+    end
+
+    # @api private
+    def throttle_rate
+      @throttle_rate ||=
+        begin
+          get(:'throttle_rate')
+        end || 1
     end
 
     def root

@@ -11,11 +11,17 @@ module Skylight
               rendered_mime = begin
                 if respond_to?(:rendered_format)
                   rendered_format
+                elsif !content_type
+                  nil
                 elsif content_type.is_a?(Mime::Type)
                   content_type
                 elsif content_type.respond_to?(:to_s)
                   type_str = content_type.to_s.split(';').first
-                  Mime::Type.lookup(type_str) unless type_str.empty?
+                  if type_str && !type_str.empty?
+                    Mime::Type.lookup(type_str)
+                  else
+                    nil
+                  end
                 end
               end
               payload[:rendered_format] = rendered_mime.try(:ref)

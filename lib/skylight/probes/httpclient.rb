@@ -26,7 +26,7 @@ module Skylight
 
             alias do_request_without_sk do_request
             def do_request(method, uri, query, body, header, &block)
-              if Skylight::Probes::HTTPClient::Probe.disabled?
+              if !defined?(Skylight::Probes::HTTPClient::Probe) || Skylight::Probes::HTTPClient::Probe.disabled?
                 return do_request_without_sk(method, uri, query, body, header, &block)
               end
 

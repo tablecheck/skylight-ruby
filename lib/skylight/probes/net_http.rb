@@ -22,7 +22,7 @@ module Skylight
             alias request_without_sk request
 
             def request(req, body = nil, &block)
-              if !started? || Skylight::Probes::NetHTTP::Probe.disabled?
+              if !started? || !defined?(Skylight::Probes::NetHTTP::Probe) || Skylight::Probes::NetHTTP::Probe.disabled?
                 return request_without_sk(req, body, &block)
               end
 

@@ -297,7 +297,7 @@ module Skylight
         return false
       end
 
-      if sample?
+      if sampled?
         t { fmt "sampling trace=#{trace.uuid}" }
         return false
       end
@@ -349,7 +349,7 @@ module Skylight
       trace.endpoint += "<sk-segment>#{segment}</sk-segment>"
     end
 
-    def sample?
+    def sampled?
       @config.sample_rate < 1 && Random.rand >= @config.sample_rate
     end
   end

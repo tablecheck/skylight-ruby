@@ -419,9 +419,9 @@ describe "Skylight::Instrumenter", :http, :agent do
         expect(server.reports[0].endpoints.map(&:name)).to eq(["foo#bar"])
       end
 
-      describe "#throttling" do
-        it "ignores throttled traces" do
-          config[:throttle_rate] = 0.5
+      describe "#sampling" do
+        it "ignores non-sampled traces" do
+          config[:sample_rate] = 0.5
 
           allow(Random).to receive(:rand).with(any_args).and_return(0.6)
 
@@ -435,8 +435,8 @@ describe "Skylight::Instrumenter", :http, :agent do
           server.should have(0).reports
         end
 
-        it "permits non-throttled traces" do
-          config[:throttle_rate] = 0.5
+        it "permits sampled traces" do
+          config[:sample_rate] = 0.5
 
           allow(Random).to receive(:rand).with(any_args).and_return(0.4)
 

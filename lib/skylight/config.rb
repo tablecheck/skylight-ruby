@@ -56,7 +56,7 @@ module Skylight
       -"IGNORED_ENDPOINTS"            => :ignored_endpoints,
       -"SINATRA_ROUTE_PREFIXES"       => :sinatra_route_prefixes,
       -"ENABLE_SOURCE_LOCATIONS"      => :enable_source_locations,
-      -"THROTTLE_RATE"                => :throttle_rate,
+      -"SAMPLE_RATE"                  => :sample_rate,
 
       # == Max Span Handling ==
       -"REPORT_MAX_SPANS_EXCEEDED"    => :report_max_spans_exceeded,
@@ -526,10 +526,10 @@ module Skylight
     end
 
     # @api private
-    def throttle_rate
-      @throttle_rate ||=
+    def sample_rate
+      @sample_rate ||=
         begin
-          get(:throttle_rate)
+          get(:sample_rate)
         end || 1
     end
 

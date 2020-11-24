@@ -297,8 +297,8 @@ module Skylight
         return false
       end
 
-      if throttle?
-        t { fmt "throttling trace=#{trace.uuid}" }
+      if sample?
+        t { fmt "sampling trace=#{trace.uuid}" }
         return false
       end
 
@@ -349,8 +349,8 @@ module Skylight
       trace.endpoint += "<sk-segment>#{segment}</sk-segment>"
     end
 
-    def throttle?
-      @config.throttle_rate < 1 && Random.rand >= @config.throttle_rate
+    def sample?
+      @config.sample_rate < 1 && Random.rand >= @config.sample_rate
     end
   end
 end

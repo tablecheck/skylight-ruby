@@ -10,10 +10,10 @@ module Skylight
         @closed = false
       end
 
-      def respond_to_missing?(*args)
-        return false if args.first.to_s !~ /^to_ary$/
+      def respond_to_missing?(name, include_all = false)
+        return false if name.to_s !~ /^to_ary$/
 
-        @body.respond_to?(*args)
+        @body.respond_to?(name, include_all)
       end
 
       def close
@@ -117,7 +117,7 @@ module Skylight
       end
 
       def endpoint_meta(_env)
-        nil
+        { source_location: Trace::SYNTHETIC }
       end
 
       # Request ID code based on ActionDispatch::RequestId

@@ -18,7 +18,7 @@ if Skylight.native?
       server.wait resource: "/report"
       trace = server.reports.dig(0, :endpoints, 0, :traces, 0)
 
-      span = trace.spans.find {|s| s.event.category == "db.sql.query" }
+      span = trace.spans.find { |s| s.event.category == "db.sql.query" }
       expect(span).to_not be_nil, "created a span"
 
       [span.event.category, span.event.title, span.event.description]
@@ -45,16 +45,20 @@ if Skylight.native?
     end
 
     it "Handles Rails-style insertions" do
-      sql = %{INSERT INTO "agent_errors" ("body", "created_at", "hostname", "reason") VALUES ($1, $2, $3, $4) } +
-            %(RETURNING "id")
+      sql = <<~SQL
+        INSERT INTO "agent_errors" ("body", "created_at", "hostname", "reason") VALUES ($1, $2, $3, $4)
+        RETURNING "id"
+      SQL
 
       cat, title, desc =
         handle_query(name: "SQL", sql: sql)
 
       expect(cat).to eq("db.sql.query")
       expect(title).to eq("INSERT INTO agent_errors")
-      expect(desc).to eq(%{INSERT INTO "agent_errors" ("body", "created_at", "hostname", "reason") } +
-                         %{VALUES (?, ?, ?, ?) RETURNING "id"})
+      expect(desc).to eq(<<~SQL.strip)
+        INSERT INTO "agent_errors" ("body", "created_at", "hostname", "reason") VALUES (?, ?, ?, ?)
+        RETURNING "id"
+      SQL
     end
 
     it "Determines embedded binds" do
@@ -67,17 +71,21 @@ if Skylight.native?
     end
 
     it "handles some precomputed binds" do
-      sql = %{INSERT INTO "agent_errors" ("body", "created_at", "value", "hostname", "reason") } +
-            %{VALUES ($1, $2, NULL, $3, $4) RETURNING "id"}
-      extracted = %{INSERT INTO "agent_errors" ("body", "created_at", "value", "hostname", "reason") } +
-                  %{VALUES (?, ?, ?, ?, ?) RETURNING "id"}
+      sql = <<~SQL
+        INSERT INTO "agent_errors" ("body", "created_at", "value", "hostname", "reason")
+        VALUES ($1, $2, NULL, $3, $4) RETURNING "id"
+      SQL
+      extracted = <<~SQL
+        INSERT INTO "agent_errors" ("body", "created_at", "value", "hostname", "reason")
+        VALUES (?, ?, ?, ?, ?) RETURNING "id"
+      SQL
 
       cat, title, desc =
         handle_query(name: "SQL", sql: sql)
 
       expect(cat).to eq("db.sql.query")
       expect(title).to eq("INSERT INTO agent_errors")
-      expect(desc).to eq(extracted)
+      expect(desc).to eq(extracted.strip)
     end
 
     context "with logging" do
@@ -89,8 +97,8 @@ if Skylight.native?
 
       def test_config_values
         super.merge(
-          log_level: "debug",
-          native_log_file: "#{tmpdir}/native.log",
+          log_level:            "debug",
+          native_log_file:      "#{tmpdir}/native.log",
           log_sql_parse_errors: log_sql_parse_errors
         )
       end
@@ -127,4 +135,3 @@ if Skylight.native?
     end
   end
 end
-

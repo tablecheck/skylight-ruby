@@ -16,63 +16,66 @@ if defined?(Grape)
       Skylight.mock! do |trace|
         @called_endpoint = trace.endpoint
       end
-    end
 
-    after do
-      Skylight.stop!
-    end
+      # Ideally, we'd not define this globally, but trying to use stub_const is causing issues for the specs.
+      class GrapeTest < Grape::API # rubocop:disable Lint/ConstantDefinitionInBlock
+        class App < Grape::API
+          get "test" do
+            { test: true }
+          end
 
-    class GrapeTest < Grape::API
-      class App < Grape::API
+          desc "Update item" do
+            detail "We take the id to update the item"
+            named "Update route"
+          end
+          post "update/:id" do
+            { update: true }
+          end
+
+          namespace :users do
+            get :list do
+              { users: [] }
+            end
+          end
+
+          namespace :admin do
+            before do
+              Skylight.instrument("verifying admin") { SpecHelper.clock.skip 1 }
+            end
+
+            get :secret do
+              { admin: true }
+            end
+          end
+
+          route :any, "*path" do
+            { path: params[:path] }
+          end
+        end
+
+        format :json
+
+        mount App => "/app"
+
+        desc "This is a test"
         get "test" do
           { test: true }
         end
 
-        desc "Update item" do
-          detail "We take the id to update the item"
-          named "Update route"
-        end
-        post "update/:id" do
-          { update: true }
+        get "raise" do
+          raise "Unexpected error"
         end
 
-        namespace :users do
-          get :list do
-            { users: [] }
-          end
-        end
-
-        namespace :admin do
-          before do
-            Skylight.instrument("verifying admin") { SpecHelper.clock.skip 1 }
-          end
-
-          get :secret do
-            { admin: true }
-          end
-        end
-
-        route :any, "*path" do
-          { path: params[:path] }
+        route ["GET", "POST"], "data" do
+          "data"
         end
       end
+    end
 
-      format :json
+    after do
+      Object.send(:remove_const, :GrapeTest)
 
-      mount App => "/app"
-
-      desc "This is a test"
-      get "test" do
-        { test: true }
-      end
-
-      get "raise" do
-        raise "Unexpected error"
-      end
-
-      route ["GET", "POST"], "data" do
-        "data"
-      end
+      Skylight.stop!
     end
 
     def app
@@ -86,12 +89,13 @@ if defined?(Grape)
       allow_any_instance_of(Skylight::Trace).to receive(:instrument)
 
       expect_any_instance_of(Skylight::Trace).to receive(:instrument).
-        with("app.grape.endpoint", title, nil, {}).
+        with("app.grape.endpoint", title, nil, hash_including({})).
         once
     end
 
     it "creates a Trace for a Grape app" do
-      expect(Skylight).to receive(:trace).with("Rack", "app.rack.request", nil, meta: nil, component: :web).
+      expect(Skylight).to receive(:trace).
+        with("Rack", "app.rack.request", nil, meta: { source_location: Skylight::Trace::SYNTHETIC }, component: :web).
         and_call_original
 
       get "/test"
@@ -132,12 +136,7 @@ if defined?(Grape)
 
     it "instruments wildcard routes" do
       wildcard = Gem::Version.new(Grape::VERSION) >= Gem::Version.new("0.19") ? "*" : "any"
-
-      allow_any_instance_of(Skylight::Trace).to receive(:instrument)
-
-      expect_any_instance_of(Skylight::Trace).to receive(:instrument).
-        with("app.grape.endpoint", "#{wildcard} *path", nil, {}).
-        once
+      expect_endpoint_instrument("#{wildcard} *path")
 
       delete "/app/missing"
 
@@ -145,11 +144,7 @@ if defined?(Grape)
     end
 
     it "instruments multi method routes" do
-      allow_any_instance_of(Skylight::Trace).to receive(:instrument)
-
-      expect_any_instance_of(Skylight::Trace).to receive(:instrument).
-        with("app.grape.endpoint", "GET... data", nil, {}).
-        once
+      expect_endpoint_instrument("GET... data")
 
       get "/data"
 
@@ -157,11 +152,7 @@ if defined?(Grape)
     end
 
     it "instruments failures" do
-      allow_any_instance_of(Skylight::Trace).to receive(:instrument)
-
-      expect_any_instance_of(Skylight::Trace).to receive(:instrument).
-        with("app.grape.endpoint", "GET raise", nil, {}).
-        once
+      expect_endpoint_instrument("GET raise")
 
       expect do
         get "/raise"
@@ -171,19 +162,14 @@ if defined?(Grape)
     end
 
     it "instruments filters" do
-      allow_any_instance_of(Skylight::Trace).to receive(:instrument)
-
+      expect_endpoint_instrument("GET admin secret")
       # TODO: Attempt to verify order
       expect_any_instance_of(Skylight::Trace).to receive(:instrument).
-        with("app.grape.filters", "Before Filters", nil, {}).
+        with("app.grape.filters", "Before Filters", nil, an_instance_of(Hash)).
         once
 
       expect_any_instance_of(Skylight::Trace).to receive(:instrument).
         with("app.block", "verifying admin", nil, an_instance_of(Hash)).
-        once
-
-      expect_any_instance_of(Skylight::Trace).to receive(:instrument).
-        with("app.grape.endpoint", "GET admin secret", nil, {}).
         once
 
       get "/app/admin/secret"

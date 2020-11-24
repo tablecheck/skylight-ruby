@@ -82,80 +82,74 @@ module Skylight
     end
 
     it "force closes any open span on build" do
-      begin
-        original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
+      original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
 
-        trace = Skylight.trace "Rack", "app.rack.request"
-        trace.instrument "foo"
-        clock.skip 0.001
-        trace.submit
+      trace = Skylight.trace "Rack", "app.rack.request"
+      trace.instrument "foo"
+      clock.skip 0.001
+      trace.submit
 
-        server.wait resource: "/report"
+      server.wait resource: "/report"
 
-        expect(spans.count).to eq(2)
-        expect(spans[1].event.category).to eq("foo")
-        expect(spans[1].started_at).to eq(0)
-        expect(spans[1].duration).to eq(10)
+      expect(spans.count).to eq(2)
+      expect(spans[1].event.category).to eq("foo")
+      expect(spans[1].started_at).to eq(0)
+      expect(spans[1].duration).to eq(10)
 
-        expect(spans[0].event.category).to eq("app.rack.request")
-      ensure
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
-      end
+      expect(spans[0].event.category).to eq("app.rack.request")
+    ensure
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
     end
 
     it "marks broken for invalid span nesting" do
-      begin
-        original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
+      original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
 
-        trace = Skylight.trace "Rack", "app.rack.request"
-        a = trace.instrument "foo"
-        clock.skip 0.1
-        _b = trace.instrument "bar"
-        clock.skip 0.1
-        trace.done(a)
+      trace = Skylight.trace "Rack", "app.rack.request"
+      a = trace.instrument "foo"
+      clock.skip 0.1
+      _b = trace.instrument "bar"
+      clock.skip 0.1
+      trace.done(a)
 
-        expect(trace).to be_broken
-      ensure
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
-      end
+      expect(trace).to be_broken
+    ensure
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
     end
 
     it "closes any spans that were not properly closed" do
-      begin
-        original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
+      original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
 
-        trace = Skylight.trace "Rack", "app.rack.request"
-        trace.instrument "foo"
-        clock.skip 0.1
-        trace.instrument "bar"
-        clock.skip 0.1
-        a = trace.instrument "baz"
-        clock.skip 0.1
-        trace.done(a)
-        clock.skip 0.1
-        trace.submit
+      trace = Skylight.trace "Rack", "app.rack.request"
+      trace.instrument "foo"
+      clock.skip 0.1
+      trace.instrument "bar"
+      clock.skip 0.1
+      a = trace.instrument "baz"
+      clock.skip 0.1
+      trace.done(a)
+      clock.skip 0.1
+      trace.submit
 
-        server.wait resource: "/report"
+      server.wait resource: "/report"
 
-        expect(spans.count).to eq(4)
+      expect(spans.count).to eq(4)
 
-        expect(spans[0].event.category).to eq("app.rack.request")
-        expect(spans[0].duration).to       eq(4000)
+      expect(spans[0].event.category).to eq("app.rack.request")
+      expect(spans[0].duration).to       eq(4000)
 
-        expect(spans[1].event.category).to eq("foo")
-        expect(spans[1].duration).to       eq(4000)
+      expect(spans[1].event.category).to eq("foo")
+      expect(spans[1].duration).to       eq(4000)
 
-        expect(spans[2].event.category).to eq("bar")
-        expect(spans[2].duration).to       eq(3000)
+      expect(spans[2].event.category).to eq("bar")
+      expect(spans[2].duration).to       eq(3000)
 
-        expect(spans[3].event.category).to eq("baz")
-        expect(spans[3].duration).to       eq(1000)
-      ensure
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
-      end
+      expect(spans[3].event.category).to eq("baz")
+      expect(spans[3].duration).to       eq(1000)
+    ensure
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
     end
 
     it "mutes child span instrumentation when specified" do
@@ -186,24 +180,22 @@ module Skylight
     end
 
     it "cleans up current_trace when broken" do
-      begin
-        original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
+      original_raise_on_error = ENV["SKYLIGHT_RAISE_ON_ERROR"]
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = nil
 
-        trace = Skylight.trace "Rack", "app.rack.request"
-        a = trace.instrument "foo"
-        clock.skip 0.1
-        _b = trace.instrument "bar"
-        clock.skip 0.1
-        # Force out of order
-        trace.done(a)
+      trace = Skylight.trace "Rack", "app.rack.request"
+      a = trace.instrument "foo"
+      clock.skip 0.1
+      _b = trace.instrument "bar"
+      clock.skip 0.1
+      # Force out of order
+      trace.done(a)
 
-        expect(Skylight.instrumenter.current_trace).to eq(trace)
-        trace.submit
-        expect(Skylight.instrumenter.current_trace).to be_nil
-      ensure
-        ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
-      end
+      expect(Skylight.instrumenter.current_trace).to eq(trace)
+      trace.submit
+      expect(Skylight.instrumenter.current_trace).to be_nil
+    ensure
+      ENV["SKYLIGHT_RAISE_ON_ERROR"] = original_raise_on_error
     end
 
     it "tracks the title" do
@@ -260,7 +252,7 @@ module Skylight
     it "warns about unknown meta keys" do
       trace = Skylight.trace "Rack", "app.rack.request"
 
-      expect(trace).to receive(:warn).with("Unknown meta keys will be ignored; keys=[:invalid]")
+      expect(trace).to receive(:warn).with("Unknown meta key will be ignored; key=:invalid")
 
       span = trace.instrument("app.block", nil, nil, invalid: 1)
       trace.done(span)
@@ -279,7 +271,7 @@ module Skylight
 
         server.wait resource: "/report"
 
-        annotation = get_annotation_val(spans[1], :SourceLocation)
+        annotation = spans[1].annotation_val(:SourceLocation)
         expect(annotation).to be_nil
       end
 
@@ -302,8 +294,7 @@ module Skylight
 
           server.wait resource: "/report"
 
-
-          annotation = get_annotation_val(spans[1], :SourceLocation)
+          annotation = spans[1].annotation_val(:SourceLocation)
           source_location = server.reports[0].source_locations.index("foo/bar.rb")
           expect(annotation&.string_val).to eq(source_location.to_s)
         end
@@ -317,7 +308,7 @@ module Skylight
 
           server.wait resource: "/report"
 
-          annotation = get_annotation_val(spans[1], :SourceLocation)
+          annotation = spans[1].annotation_val(:SourceLocation)
           source_location_index = server.reports[0].source_locations.index("foo/bar.rb")
           expect(annotation&.string_val).to eq("#{source_location_index}:123")
         end
@@ -333,7 +324,7 @@ module Skylight
 
           server.wait resource: "/report"
 
-          annotation = get_annotation_val(spans[1], :SourceLocation)
+          annotation = spans[1].annotation_val(:SourceLocation)
           expect(annotation).to be_nil
         end
 
@@ -352,7 +343,7 @@ module Skylight
 
           server.wait resource: "/report"
 
-          annotation = get_annotation_val(spans[1], :SourceLocation)
+          annotation = spans[1].annotation_val(:SourceLocation)
           source_location_index = server.reports[0].source_locations.index("foo/bar.rb")
           expect(annotation&.string_val).to eq("#{source_location_index}:1")
         end
@@ -360,7 +351,7 @@ module Skylight
         context "sanitization" do
           it "shows gem name" do
             rake_spec = Bundler.load.specs.find { |s| s.name == "rake" }
-            path = rake_spec.full_require_paths.first + "/dummy.rb"
+            path = "#{rake_spec.full_require_paths.first}/dummy.rb"
 
             trace = Skylight.trace "Rack", "app.rack.request"
             span = trace.instrument("app.block", nil, nil, source_file: path, source_line: 123)
@@ -369,14 +360,14 @@ module Skylight
 
             server.wait resource: "/report"
 
-            annotation = get_annotation_val(spans[1], :SourceLocation)
+            annotation = spans[1].annotation_val(:SourceLocation)
             source_location = server.reports[0].source_locations.index("rake")
             expect(annotation&.string_val).to eq(source_location.to_s)
           end
 
           it "ignores ignored gems" do
             rake_spec = Bundler.load.specs.find { |s| s.name == "activesupport" }
-            path = rake_spec.full_require_paths.first + "/dummy.rb"
+            path = "#{rake_spec.full_require_paths.first}/dummy.rb"
 
             trace = Skylight.trace "Rack", "app.rack.request"
             span = trace.instrument("app.block", nil, nil, source_file: path, source_line: 123)
@@ -385,7 +376,7 @@ module Skylight
 
             server.wait resource: "/report"
 
-            annotation = get_annotation_val(spans[1], :SourceLocation)
+            annotation = spans[1].annotation_val(:SourceLocation)
             expect(annotation).to be_nil
           end
 
@@ -398,7 +389,7 @@ module Skylight
 
             server.wait resource: "/report"
 
-            annotation = get_annotation_val(spans[1], :SourceLocation)
+            annotation = spans[1].annotation_val(:SourceLocation)
             expect(annotation).to be_nil
           end
         end
@@ -413,12 +404,6 @@ module Skylight
       if (span = trace.instrument(*args))
         trace.done(span)
       end
-    end
-
-    def get_annotation_val(span, key)
-      key = SpecHelper::Messages::Annotation::AnnotationKey.const_get(key)
-      annotation = span.annotations.find { |a| a.key == key }
-      annotation&.val
     end
   end
 end

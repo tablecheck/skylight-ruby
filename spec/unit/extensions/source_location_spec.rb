@@ -1,11 +1,6 @@
 require "spec_helper"
 
 describe Skylight::Extensions::SourceLocation do
-  class MyConstant
-    def an_instance_method
-    end
-  end
-
   def project_root
     File.expand_path(
       File.join(
@@ -15,10 +10,20 @@ describe Skylight::Extensions::SourceLocation do
     )
   end
 
+  before do
+    @instance_method_line = __LINE__ + 4
+    stub_const(
+      "MyConstant",
+      Class.new do
+        def an_instance_method; end
+      end
+    )
+  end
+
   let(:config) do
     OpenStruct.new(
       source_location_ignored_gems: %w[skylight],
-      root: Pathname.new(project_root)
+      root:                         Pathname.new(project_root)
     )
   end
 
@@ -71,7 +76,7 @@ describe Skylight::Extensions::SourceLocation do
       end
 
       context "with sk_source_location in payload" do
-       let(:payload) { { sk_source_location: ["/path/to/file.rb", 10] } }
+        let(:payload) { { sk_source_location: ["/path/to/file.rb", 10] } }
 
         specify do
           extension.process_normalizer_meta(payload, meta)
@@ -81,7 +86,7 @@ describe Skylight::Extensions::SourceLocation do
       end
 
       context "with source_location in meta" do
-       let(:meta) { { source_location: ["/path/to/file.rb", 10] } }
+        let(:meta) { { source_location: ["/path/to/file.rb", 10] } }
 
         specify do
           extension.process_normalizer_meta(payload, meta)
@@ -95,11 +100,11 @@ describe Skylight::Extensions::SourceLocation do
           extension.process_normalizer_meta(
             payload,
             meta,
-            source_location: [:instance_method, "MyConstant", "an_instance_method"]
+            source_location_hint: [:instance_method, "MyConstant", "an_instance_method"]
           )
 
           expect(meta[:source_file]).to eq(__FILE__)
-          expect(meta[:source_line]).to eq(5)
+          expect(meta[:source_line]).to eq(@instance_method_line)
         end
       end
     end

@@ -5,6 +5,7 @@ begin
   require "rails"
   require "action_controller/railtie"
   require "active_job/railtie"
+  require "active_record"
   require "skylight/railtie"
   enable = true
 rescue LoadError
@@ -55,160 +56,195 @@ if enable
       end
     end
 
-    class ControllerError < StandardError; end
-    class MiddlewareError < StandardError; end
-
-    class MyApplicationJob < ActiveJob::Base
-      def perform(*)
-        true
-      end
-    end
-
     around { |ex| set_agent_env(&ex) }
 
     before :each do
-      SkTestMiddleware ||= Struct.new(:app) do
-        def call(env)
-          app.call(env)
-        end
+      stub_const("ControllerError", Class.new(StandardError))
+      stub_const("MiddlewareError", Class.new(StandardError))
 
-        private
-
-          def query_parameters(env)
-            ActionDispatch::Request.new(env).query_parameters
+      stub_const(
+        "MyApplicationJob",
+        Class.new(ActiveJob::Base) do
+          def perform(*)
+            true
           end
-      end
+        end
+      )
 
-      @custom_middleware_line = __LINE__ + 2
-      CustomMiddleware ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          if env["PATH_INFO"] == "/middleware"
-            return [200, {}, ["CustomMiddleware"]]
+      stub_const(
+        "SkTestMiddleware",
+        Struct.new(:app) do
+          def call(env)
+            app.call(env)
           end
 
-          super
-        end
-      end
+          private
 
-      NonClosingMiddleware ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          super.tap do
-            # NOTE: We are intentionally throwing away the response without calling close
-            # This is to emulate a non-conforming Middleware
-            if env["PATH_INFO"] == "/non-closing"
-              return [200, {}, ["NonClosing"]]
+            def query_parameters(env)
+              ActionDispatch::Request.new(env).query_parameters
+            end
+        end
+      )
+
+      @custom_middleware_line = __LINE__ + 4
+      stub_const(
+        "CustomMiddleware",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            if env["PATH_INFO"] == "/middleware"
+              return [200, {}, ["CustomMiddleware"]]
+            end
+
+            super
+          end
+        end
+      )
+
+      stub_const(
+        "NonClosingMiddleware",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            super.tap do
+              # NOTE: We are intentionally throwing away the response without calling close
+              # This is to emulate a non-conforming Middleware
+              if env["PATH_INFO"] == "/non-closing"
+                return [200, {}, ["NonClosing"]]
+              end
             end
           end
         end
-      end
+      )
 
-      NonArrayMiddleware ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          if env["PATH_INFO"] == "/non-array"
-            return Rack::Response.new(["NonArray"])
+      stub_const(
+        "NonArrayMiddleware",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            if env["PATH_INFO"] == "/non-array"
+              return Rack::Response.new(["NonArray"])
+            end
+
+            super
+          end
+        end
+      )
+
+      stub_const(
+        "InvalidMiddleware",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            if env["PATH_INFO"] == "/invalid"
+              return "InvalidMiddlewareResponse"
+            end
+
+            super
+          end
+        end
+      )
+
+      stub_const(
+        "AssertionHook",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            super
+          ensure
+            assertion_hook
           end
 
-          super
+          private
+
+            def assertion_hook
+              # override in rspec
+            end
         end
-      end
-
-      InvalidMiddleware ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          if env["PATH_INFO"] == "/invalid"
-            return "InvalidMiddlewareResponse"
-          end
-
-          super
-        end
-      end
-
-      AssertionHook ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          super
-        ensure
-          assertion_hook
-        end
-
-        private
-
-          def assertion_hook
-            # override in rspec
-          end
-      end
+      )
 
       # These need to be distinguished by class name in order to use
       # the 'any_instance_of' matchers. It's otherwise too difficult to
       # get compiled middleware stack instances.
-      AssertionHookA ||= Class.new(AssertionHook)
-      AssertionHookB ||= Class.new(AssertionHook)
+      stub_const("AssertionHookA", Class.new(AssertionHook))
+      stub_const("AssertionHookB", Class.new(AssertionHook))
 
-      RescuingMiddleware ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          super
-        rescue MiddlewareError => e
-          # start a new span here; helps ensure traces/instrumenters are unmuted
-          Skylight.instrument("post-rescue") { SpecHelper.clock.skip 1 }
-          [500, {}, ["error=#{e.class.inspect} msg=#{e.to_s.inspect}"]]
-        end
-      end
-
-      CatchingMiddleware ||= Class.new(SkTestMiddleware) do
-        def self.thrown_response
-          [:coconut, [401, {}, ["I can't do that, Dave"]]]
-        end
-
-        def call(env)
-          catch(thrown_response[0]) { super }.tap do |r|
+      stub_const(
+        "RescuingMiddleware",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            super
+          rescue MiddlewareError => e
             # start a new span here; helps ensure traces/instrumenters are unmuted
-            if r == thrown_response[1]
-              Skylight.instrument("post-catch") { SpecHelper.clock.skip 1 }
-            end
+            Skylight.instrument("post-rescue") { SpecHelper.clock.skip 1 }
+            [500, {}, ["error=#{e.class.inspect} msg=#{e.to_s.inspect}"]]
           end
         end
+      )
 
-        def thrown_response
-          self.class.thrown_response
+      stub_const(
+        "CatchingMiddleware",
+        Class.new(SkTestMiddleware) do
+          def self.thrown_response
+            [:coconut, [401, {}, ["I can't do that, Dave"]]]
+          end
+
+          def call(env)
+            catch(thrown_response[0]) { super }.tap do |r|
+              # start a new span here; helps ensure traces/instrumenters are unmuted
+              if r == thrown_response[1]
+                Skylight.instrument("post-catch") { SpecHelper.clock.skip 1 }
+              end
+            end
+          end
+
+          def thrown_response
+            self.class.thrown_response
+          end
         end
-      end
+      )
 
-      MonkeyInTheMiddleware ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          if should_mute?(env)
-            Skylight.instrument(title: "banana", meta: { mute_children: true }) do
+      stub_const(
+        "MonkeyInTheMiddleware",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            if should_mute?(env)
+              Skylight.instrument(title: "banana", meta: { mute_children: true }) do
+                super
+              end
+            else
               super
             end
-          else
+          end
+
+          private
+
+            def should_mute?(env)
+              query_parameters(env)[:mute] == "true"
+            end
+        end
+      )
+
+      stub_const(
+        "ThrowingMiddleware",
+        Class.new(SkTestMiddleware) do
+          def call(env)
+            throw(*CatchingMiddleware.thrown_response) if should_throw?(env)
+            raise MiddlewareError, "I can't do that, Dave" if should_raise?(env)
+
             super
           end
+
+          private
+
+            def should_throw?(env)
+              query_parameters(env)[:middleware_throws] == "true"
+            end
+
+            def should_raise?(env)
+              query_parameters(env)[:middleware_raises] == "true"
+            end
         end
+      )
 
-        private
+      stub_const("EngineNamespace", Module.new)
 
-          def should_mute?(env)
-            query_parameters(env)[:mute] == "true"
-          end
-      end
-
-      ThrowingMiddleware ||= Class.new(SkTestMiddleware) do
-        def call(env)
-          throw(*CatchingMiddleware.thrown_response) if should_throw?(env)
-          raise MiddlewareError, "I can't do that, Dave" if should_raise?(env)
-
-          super
-        end
-
-        private
-
-          def should_throw?(env)
-            query_parameters(env)[:middleware_throws] == "true"
-          end
-
-          def should_raise?(env)
-            query_parameters(env)[:middleware_raises] == "true"
-          end
-      end
-
-      module EngineNamespace
+      EngineNamespace.module_eval <<-RUBY, __FILE__, __LINE__ + 1
         class MyEngine < ::Rails::Engine
           isolate_namespace EngineNamespace
         end
@@ -222,21 +258,25 @@ if enable
             render json: {}
           end
         end
-      end
+      RUBY
 
-      class SkMutingNormalizer < Skylight::Normalizers::Normalizer
-        register "mute.skylight"
+      stub_const(
+        "SkMutingNormalizer",
+        Class.new(Skylight::Normalizers::Normalizer) do
+          register "mute.skylight"
 
-        def normalize(_trace, _name, _payload)
-          ["app.mute", nil, nil, { mute_children: true }]
+          def normalize(_trace, _name, _payload)
+            ["app.mute", nil, nil, { mute_children: true }]
+          end
+
+          def normalize_after(trace, _span, _name, _payload)
+            trace.endpoint = "set-by-muted-normalizer"
+          end
         end
+      )
 
-        def normalize_after(trace, _span, _name, _payload)
-          trace.endpoint = "set-by-muted-normalizer"
-        end
-      end
-
-      class ::MyApp < Rails::Application
+      # stub_const doesn't work well for this. We do manual cleanup afterwards.
+      class ::MyApp < Rails::Application # rubocop:disable Lint/ConstantDefinitionInBlock
         PNG = [137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82,
                0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0, 58, 126, 155, 85, 0,
                0, 0, 10, 73, 68, 65, 84, 120, 156, 99, 250, 15, 0, 1, 5, 1,
@@ -246,7 +286,7 @@ if enable
 
         config.active_support.deprecation = :stderr
 
-        config.logger = Logger.new(STDOUT)
+        config.logger = Logger.new($stdout)
         config.log_level = ENV["DEBUG"] ? :debug : :unknown
         config.logger.progname = "Rails"
 
@@ -268,7 +308,7 @@ if enable
         # This class has no name
         ANONYMOUS_MIDDLEWARE_LINE = __LINE__ + 6
         config.middleware.use(Class.new do
-          def initialize(app)
+          def initialize(app) # rubocop:disable Lint/MissingSuper
             @app = app
           end
 
@@ -297,10 +337,14 @@ if enable
         config.active_job.queue_adapter = (Rails::VERSION::MAJOR >= 5 ? :async : :inline)
       end
 
+      class User < ActiveRecord::Base # rubocop:disable Lint/ConstantDefinitionInBlock
+      end
+
       # We include instrument_method in multiple places to ensure
       # that all of them work.
 
-      class ::UsersController < ActionController::Base
+      # It's hard for us to match the naming for this if we use stub_const. We manually remove later.
+      class ::UsersController < ActionController::Base # rubocop:disable Lint/ConstantDefinitionInBlock
         include Skylight::Helpers
 
         if respond_to?(:before_action)
@@ -315,9 +359,29 @@ if enable
           render json: { error: exception.message }, status: 500
         end
 
-        INDEX_LINE = __LINE__ + 1
+        const_set(:INDEX_LINE, __LINE__ + 1)
         def index
+          return index_with_db if params[:active_record]
+
+          index_inner
+        end
+        instrument_method :index
+
+        INDEX_DB_LINE = __LINE__ + 2
+        instrument_method
+        def index_with_db
+          users = User.where(username: "foo").limit(10).to_a
+
+          index_inner do
+            # purposefully repeat the same operation at a different location
+            users = User.where(username: "foo").limit(10).to_a
+          end
+        end
+
+        def index_inner
           Skylight.instrument category: "app.inside" do
+            yield if block_given?
+
             if Rails.version =~ /^4\./
               render text: "Hello"
             else
@@ -328,7 +392,6 @@ if enable
             end
           end
         end
-        instrument_method :index
 
         instrument_method
         def show
@@ -441,7 +504,7 @@ if enable
 
         private
 
-          AUTHORIZED_LINE = __LINE__ + 1
+          const_set(:AUTHORIZED_LINE, __LINE__ + 1)
           def authorized?
             true
           end
@@ -460,23 +523,26 @@ if enable
           def unused; end
       end
 
-      class ::MetalController < ActionController::Metal
-        include ActionController::Instrumentation
+      stub_const(
+        "MetalController",
+        Class.new(ActionController::Metal) do
+          include ActionController::Instrumentation
 
-        def show
-          render(
-            status: 200,
-            text:   "Zomg!"
-          )
-        end
+          def show
+            render(
+              status: 200,
+              text:   "Zomg!"
+            )
+          end
 
-        def render(options = {})
-          self.status = options[:status] || 200
-          self.content_type = options[:content_type] || "text/html; charset=utf-8"
-          headers["Content-Length"] = options[:text].bytesize.to_s
-          self.response_body = options[:text]
+          def render(options = {})
+            self.status = options[:status] || 200
+            self.content_type = options[:content_type] || "text/html; charset=utf-8"
+            headers["Content-Length"] = options[:text].bytesize.to_s
+            self.response_body = options[:text]
+          end
         end
-      end
+      )
     end
 
     after :each do
@@ -487,11 +553,9 @@ if enable
       # Clean slate
       # It's really too bad we can't run RSpec tests in a fork
       Object.send(:remove_const, :MyApp)
-      Object.send(:remove_const, :SkMutingNormalizer)
-      Object.send(:remove_const, :EngineNamespace)
       Object.send(:remove_const, :UsersController)
-      Object.send(:remove_const, :MetalController)
-      Rails::Railtie::Configuration.class_variable_set(:@@app_middleware, nil)
+      Object.send(:remove_const, :User)
+      Rails::Railtie::Configuration.class_variable_set(:@@app_middleware, nil) # rubocop:disable Style/ClassVars
       Rails.application = nil
     end
 
@@ -651,7 +715,6 @@ if enable
       end
 
       context "with template rendering" do
-
         def pre_boot
           super
           FileUtils.mkdir_p(expand_path("users"))
@@ -665,12 +728,11 @@ if enable
         end
 
         it "includes relative paths to the ActionView templates" do
-
           if defined?(ActionView::CacheExpiry)
             allow_any_instance_of(ActionView::CacheExpiry).to receive(:dirs_to_watch) { [] }
           end
 
-          status, headers, body = call_full MyApp, env("/users/template_index.html")
+          status, _headers, _body = call_full MyApp, env("/users/template_index.html")
 
           expect(status).to eq(200)
 
@@ -683,7 +745,9 @@ if enable
 
           expect(endpoint.name).to eq("UsersController#template_index<sk-segment>html</sk-segment>")
 
-          *spans, layout_span, template_span = endpoint.traces[0].filter_spans.map { |span| [span.event.category, span.event.title] }
+          *_spans, layout_span, template_span = endpoint.traces[0].filter_spans.map do |span|
+            [span.event.category, span.event.title]
+          end
 
           expect(template_span).to eq(["view.render.template", "users/index.html.erb"])
 
@@ -1444,6 +1508,52 @@ if enable
               )
             )
           )
+        end
+
+        context "with active_record" do
+          def user_migration
+            base = ActiveRecord::Migration
+            base = defined?(base::Current) ? base::Current : base
+
+            Class.new(base) do
+              def self.up
+                create_table :users, force: true do |table|
+                  table.string :username
+                  table.timestamps
+                end
+              end
+
+              def self.down
+                drop_table :users
+              end
+            end
+          end
+
+          around do |example|
+            with_sqlite(migration: user_migration, &example)
+          end
+
+          it "finds multiple source_locations for repeated queries" do
+            call MyApp, env("/users?active_record=true")
+
+            server.wait(resource: "/report")
+
+            report = server.reports.first
+            trace = report.dig(:endpoints, 0, :traces, 0)
+
+            spans = trace.spans.select do |span|
+              span.event.category == "db.sql.query"
+            end
+
+            source_locations = spans.map do |span|
+              report.source_location(span)
+            end
+
+            source_file = Pathname.new(__FILE__).relative_path_from(spec_root).to_s
+            base_line = ::UsersController::INDEX_DB_LINE
+            expect(source_locations[0]).to eq("#{source_file}:#{base_line + 1}")
+            expect(source_locations[1]).to eq("#{source_file}:#{base_line + 5}")
+          end
         end
       end
     end

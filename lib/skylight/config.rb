@@ -111,7 +111,8 @@ module Skylight
       -"HEROKU_DYNO_INFO_PATH"        => :'heroku.dyno_info_path',
 
       # == Source Location ==
-      -"SOURCE_LOCATION_IGNORED_GEMS" => :source_location_ignored_gems
+      -"SOURCE_LOCATION_IGNORED_GEMS" => :source_location_ignored_gems,
+      -"SOURCE_LOCATION_CACHE_SIZE"   => :source_location_cache_size
     }.freeze
 
     KEY_TO_NATIVE_ENV = {
@@ -120,9 +121,7 @@ module Skylight
       native_log_level: "LOG_LEVEL"
     }.freeze
 
-    SERVER_VALIDATE = %i[
-      enable_source_locations
-    ].freeze
+    SERVER_VALIDATE = %i[].freeze
 
     DEFAULT_IGNORED_SOURCE_LOCATION_GEMS = [
       -"skylight",
@@ -151,7 +150,7 @@ module Skylight
             enable_segments:           true,
             enable_sidekiq:            false,
             sinatra_route_prefixes:    false,
-            enable_source_locations:   false,
+            enable_source_locations:   true,
 
             # Deploys
             'heroku.dyno_info_path':   -"/etc/heroku/dyno",
@@ -244,7 +243,7 @@ module Skylight
     end
 
     # @api private
-    attr_reader :environment
+    attr_reader :priority_key
 
     # @api private
     def initialize(*args)
@@ -254,16 +253,16 @@ module Skylight
         attrs = args.pop.dup
       end
 
-      @values   = {}
+      @values = {}
       @priority = {}
-      @regexp   = nil
+      @priority_regexp = nil
       @alert_logger = nil
       @logger = nil
 
       p = attrs.delete(:priority)
 
-      if (@environment = args[0])
-        @regexp = /^#{Regexp.escape(@environment)}\.(.+)$/
+      if (@priority_key = args[0])
+        @priority_regexp = /^#{Regexp.escape(priority_key)}\.(.+)$/
       end
 
       attrs.each do |k, v|
@@ -278,7 +277,8 @@ module Skylight
     def self.load(opts = {}, env = ENV)
       attrs = {}
       path = opts.delete(:file)
-      environment = opts.delete(:environment)
+      priority_key = opts.delete(:priority_key)
+      priority_key ||= opts[:env] # if a priority_key is not given, use env if available
 
       if path
         error = nil
@@ -296,11 +296,14 @@ module Skylight
         raise ConfigError, "could not load config file; msg=#{error}" if error
       end
 
+      # The key-value pairs in this `priority` option are inserted into the
+      # config's @priority hash *after* anything listed under priority_key;
+      # i.e., ENV takes precendence over priority_key
       if env
         attrs[:priority] = remap_env(env)
       end
 
-      config = new(environment, attrs)
+      config = new(priority_key, attrs)
 
       opts.each do |k, v|
         config[k] = v
@@ -440,7 +443,7 @@ module Skylight
           end
         end
 
-        if @regexp && k =~ @regexp
+        if @priority_regexp && k =~ @priority_regexp
           @priority[$1.to_sym] = val
         end
 
@@ -558,7 +561,7 @@ module Skylight
           when /^warn$/i  then Logger::WARN
           when /^error$/i then Logger::ERROR
           when /^fatal$/i then Logger::FATAL
-          else Logger::ERROR
+          else Logger::ERROR # rubocop:disable Lint/DuplicateBranch
           end
         end
     end
@@ -595,7 +598,7 @@ module Skylight
       end
     end
 
-    attr_writer :logger
+    attr_writer :logger, :alert_logger
 
     def alert_logger
       @alert_logger ||= MUTEX.synchronize do
@@ -609,8 +612,6 @@ module Skylight
         l
       end
     end
-
-    attr_writer :alert_logger
 
     def enable_segments?
       !!get(:enable_segments)
@@ -647,13 +648,13 @@ module Skylight
 
         Logger.new(out, progname: "Skylight", level: level)
       rescue
-        Logger.new(STDOUT, progname: "Skylight", level: level)
+        Logger.new($stdout, progname: "Skylight", level: level)
       end
 
       def load_logger
         unless (l = @logger)
           out = get(:log_file)
-          out = STDOUT if out == "-"
+          out = $stdout if out == "-"
           l = create_logger(out, level: log_level)
         end
 
@@ -709,7 +710,7 @@ module Skylight
 
             # This is a weird way to handle priorities
             # See https://github.com/tildeio/direwolf-agent/issues/275
-            k = "#{environment}.#{k}" if environment
+            k = "#{priority_key}.#{k}" if priority_key
 
             set(k, v)
           end

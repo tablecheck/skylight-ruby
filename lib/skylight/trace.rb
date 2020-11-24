@@ -4,8 +4,9 @@ require "skylight/util/logging"
 module Skylight
   class Trace
     GC_CAT = "noise.gc".freeze
+    SYNTHETIC = "<synthetic>".freeze
 
-    META_KEYS = %i[mute_children].freeze
+    META_KEYS = %i[mute_children database].freeze
 
     include Util::Logging
 
@@ -38,6 +39,8 @@ module Skylight
       @notifications = []
 
       @spans = []
+
+      preprocess_meta(meta) if meta
 
       # create the root node
       @root = start(native_get_started_at, cat, title, desc, meta, normalize: false)
@@ -217,7 +220,8 @@ module Skylight
 
         if time > 0
           t { fmt "tracking GC time; duration=%d", time }
-          stop(start(now - time, GC_CAT, nil, nil, nil), now)
+          meta = { source_location: SYNTHETIC }
+          stop(start(now - time, GC_CAT, nil, nil, meta), now)
         end
       end
 
@@ -336,8 +340,10 @@ module Skylight
       def validate_meta(meta)
         unknown_keys = meta.keys - allowed_meta_keys
         if unknown_keys.any?
-          warn "Unknown meta keys will be ignored; keys=#{unknown_keys.inspect}"
-          unknown_keys.each { |key| meta.delete(key) }
+          unknown_keys.each do |key|
+            maybe_warn("unknown_meta:#{key}", "Unknown meta key will be ignored; key=#{key.inspect}")
+            meta.delete(key)
+          end
         end
       end
 

@@ -13,6 +13,11 @@ module Skylight
       allow_any_instance_of(Skylight::Extensions::SourceLocation).to receive(:find_caller) { caller_location }
     end
 
+    # Ideally we wouldn't declare these universally, but there were some challenges around getting the tests
+    # to pass without this setup.
+
+    # rubocop:disable Lint/ConstantDefinitionInBlock
+
     class Skylight::Normalizers::SubscriberTestNormalizer < Skylight::Normalizers::Normalizer
       register "subscriber_test.spec.skylight"
 
@@ -41,6 +46,8 @@ module Skylight
       end
     end
 
+    # rubocop:enable Lint/ConstantDefinitionInBlock
+
     around do |ex|
       subscriber.register!
       ex.call
@@ -66,7 +73,7 @@ module Skylight
     specify("unsubscribing from a string does not unsub from everything") do
       original_count = count_sk_subscribers
 
-      # Note: do not want to rely on a specific count here (as of this writing,
+      # NOTE: do not want to rely on a specific count here (as of this writing,
       # actual count is 29); it should just be some number greater than 1
       # (ensure that we're not unsubscribing *all* skylight listeners)
       expect(original_count).to be > 1
@@ -101,7 +108,7 @@ module Skylight
             { source_file: source_file, source_line: 1 }
           ]
         },
-        { # rubocop:disable Style/BracesAroundHashParameters
+        {
           id:        2,
           done:      true,
           done_meta: {},

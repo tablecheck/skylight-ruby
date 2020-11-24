@@ -16,7 +16,7 @@ class ExtensionTask < Rake::ExtensionTask
   def sh(*cmd)
     original_env = ENV.to_hash
     ENV["SKYLIGHT_REQUIRED"] = "true"
-    ENV["SKYLIGHT_EXT_STRICT"] = ENV["SKYLIGHT_EXT_STRICT"] !~ /^false$/i ? "true" : nil
+    ENV["SKYLIGHT_EXT_STRICT"] = ENV["SKYLIGHT_EXT_STRICT"] =~ /^false$/i ? nil : "true"
     super
   ensure
     ENV.replace(original_env)
@@ -71,6 +71,6 @@ if defined?(YARD)
   YARD::Rake::YardocTask.new
 end
 
-Rake.add_rakelib 'lib/tasks'
+Rake.add_rakelib "lib/tasks"
 
 task default: %i[spec]

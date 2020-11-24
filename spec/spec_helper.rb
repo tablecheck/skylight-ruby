@@ -15,6 +15,17 @@ rescue LoadError
   puts "Skipping CodeClimate coverage reporting"
 end
 
+# Sidekiq 4 added a `Delay` extension to `Module` by default;
+# depending on load order, this could conflict with/override Delayed::Job's
+# `delay` method. It is disabled by default in Sidekiq 5 and higher.
+#
+# If Sidekiq.remove_delay! exists, call it, but otherwise don't worry too much about it.
+begin
+  require "sidekiq/rails"
+  Sidekiq.remove_delay!
+rescue # rubocop:disable Lint/SuppressedException
+end
+
 require "yaml"
 require "beefcake"
 require "rspec"
@@ -46,12 +57,10 @@ end
 
 %w[excon tilt sinatra sequel faraday mongo mongoid active_model_serializers
    httpclient elasticsearch].each do |library|
-  begin
-    require library
-    Skylight::Probes.probe(library)
-  rescue LoadError
-    puts "Unable to load #{library}"
-  end
+  require library
+  Skylight::Probes.probe(library)
+rescue LoadError
+  puts "Unable to load #{library}"
 end
 
 begin
@@ -184,7 +193,7 @@ RSpec.configure do |config|
   end
 
   config.before do
-    Skylight::Config::ENV_TO_KEY.keys.each do |key|
+    Skylight::Config::ENV_TO_KEY.each_key do |key|
       # TODO: It would be good to test other prefixes as well
       key = "SKYLIGHT_#{key}"
       ENV[key] = e[key]
@@ -239,14 +248,12 @@ RSpec.configure do |config|
   end
 
   config.around :each, instrumenter: true do |example|
-    begin
-      mock_clock! # This happens before the before(:each) below
-      clock.freeze
-      Skylight.mock!
-      Skylight.trace("Test") { example.run }
-    ensure
-      Skylight.stop!
-    end
+    mock_clock! # This happens before the before(:each) below
+    clock.freeze
+    Skylight.mock!
+    Skylight.trace("Test") { example.run }
+  ensure
+    Skylight.stop!
   end
 
   config.around :each, http: true do |ex|

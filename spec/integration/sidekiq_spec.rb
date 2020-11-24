@@ -31,46 +31,47 @@ if enable
         block.call(Sidekiq::Testing)
       end
 
-      Skylight.start!
+      # Allow source locations to point to this directory
+      Skylight.start!(root: __dir__)
 
-      class ::MyWorker
-        include Sidekiq::Worker
+      stub_const(
+        "MyWorker",
+        Class.new do
+          include Sidekiq::Worker
 
-        def perform(error_key = nil)
-          Skylight.instrument category: "app.inside" do
-            Skylight.instrument category: "app.zomg" do
-              # nothing
-              SpecHelper.clock.skip 1
+          def perform(error_key = nil)
+            Skylight.instrument category: "app.inside" do
+              Skylight.instrument category: "app.zomg" do
+                # nothing
+                SpecHelper.clock.skip 1
 
-              maybe_raise(error_key)
+                maybe_raise(error_key)
+              end
+
+              Skylight.instrument(category: "app.after_zomg") { SpecHelper.clock.skip 1 }
             end
-
-            Skylight.instrument(category: "app.after_zomg") { SpecHelper.clock.skip 1 }
           end
+
+          private
+
+            def maybe_raise(key)
+              return unless key
+
+              err = {
+                "runtime_error" => RuntimeError,
+                "shutdown"      => Sidekiq::Shutdown
+              }.fetch(key)
+
+              raise err
+            end
         end
-
-        private
-
-          def maybe_raise(key)
-            return unless key
-
-            err = {
-              "runtime_error" => RuntimeError,
-              "shutdown"      => Sidekiq::Shutdown
-            }.fetch(key)
-
-            raise err
-          end
-      end
+      )
     end
 
     after :each do
       ENV.replace(@original_env)
       Skylight.stop!
       Sidekiq::Testing.disable!
-
-      # Clean slate
-      Object.send(:remove_const, :MyWorker)
     end
 
     context "with agent", :http, :agent do
@@ -95,6 +96,9 @@ if enable
         names = trace.filter_spans.map { |s| s.event.category }
 
         expect(names).to eq(["app.sidekiq.worker", "app.inside", "app.zomg", "app.after_zomg"])
+
+        perform_line = MyWorker.instance_method(:perform).source_location[1]
+        expect(batch.source_location(trace.spans[0])).to end_with("sidekiq_spec.rb:#{perform_line}")
       end
 
       it "records failed jobs in the error queue" do
@@ -116,6 +120,9 @@ if enable
         names = trace.filter_spans.map { |s| s.event.category }
 
         expect(names).to eq(["app.sidekiq.worker", "app.inside", "app.zomg"])
+
+        perform_line = MyWorker.instance_method(:perform).source_location[1]
+        expect(batch.source_location(trace.spans[0])).to end_with("sidekiq_spec.rb:#{perform_line}")
       end
 
       it "records killed jobs in the error queue" do
@@ -137,6 +144,9 @@ if enable
         names = trace.filter_spans.map { |s| s.event.category }
 
         expect(names).to eq(["app.sidekiq.worker", "app.inside", "app.zomg"])
+
+        perform_line = MyWorker.instance_method(:perform).source_location[1]
+        expect(batch.source_location(trace.spans[0])).to end_with("sidekiq_spec.rb:#{perform_line}")
       end
     end
   end

@@ -20,7 +20,7 @@ module Skylight
         matches = registry.select { |n, _| n =~ /(^|\.)#{name}$/ }
         raise ArgumentError, "no normalizers match #{name}" if matches.empty?
 
-        matches.values.each { |v| v[1] = enabled }
+        matches.each_value { |v| v[1] = enabled }
       end
     end
 
@@ -69,7 +69,8 @@ module Skylight
         return cat if cat == :skip
 
         meta ||= {}
-        process_meta(trace, name, payload, meta, cache_key: ret.hash)
+        cache_key = ret.hash
+        process_meta(trace, name, payload, meta, cache_key: cache_key)
 
         [cat, title, desc, meta]
       end
@@ -78,7 +79,7 @@ module Skylight
 
       private
 
-        def process_meta(trace, name, payload, meta, cache_key: nil)
+        def process_meta(trace, _name, payload, meta, cache_key: nil)
           trace.instrumenter.extensions.process_normalizer_meta(
             payload,
             meta,

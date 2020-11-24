@@ -75,8 +75,7 @@ module SpecHelper
   end
 
   def current_trace
-    inst = Skylight.instrumenter || Skylight.instrumenter
-    inst ? inst.current_trace : nil
+    Skylight.instrumenter&.current_trace
   end
 
   def set_agent_env
@@ -120,25 +119,39 @@ module SpecHelper
     # rubocop:disable Security/Eval
     begin
       stream = stream.to_s
-      eval "$#{stream} = StringIO.new", nil, __FILE__, __LINE__
+      eval "$#{stream} = StringIO.new", nil, __FILE__, __LINE__      # $stdout = StringIO.new
       yield
-      result = eval("$#{stream}", nil, __FILE__, __LINE__).string
+      result = eval("$#{stream}", nil, __FILE__, __LINE__).string    # $stdout.string
     ensure
-      eval("$#{stream} = #{stream.upcase}", nil, __FILE__, __LINE__)
+      eval("$#{stream} = #{stream.upcase}", nil, __FILE__, __LINE__) # $stdout = STDOUT;
     end
     # rubocop:enable Security/Eval
 
     result
   end
 
-  def with_sqlite(migration: nil)
-    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
-    verbose_was = ActiveRecord::Migration.verbose
-    ActiveRecord::Migration.verbose = false
-    ActiveRecord::Schema.define { migration.up } if migration
+  def with_sqlite_connection(database: nil)
+    require "active_record"
+    require "sqlite3"
+
+    ActiveRecord::Base.establish_connection(
+      adapter:  "sqlite3",
+      database: database || "file::memory:?cache=shared"
+    )
+
     yield
-    ActiveRecord::Base.remove_connection
   ensure
-    ActiveRecord::Migration.verbose = verbose_was
+    ActiveRecord::Base.remove_connection
+  end
+
+  def with_sqlite(migration: nil, database: nil)
+    with_sqlite_connection(database: database) do
+      verbose_was = ActiveRecord::Migration.verbose
+      ActiveRecord::Migration.verbose = false
+      ActiveRecord::Schema.define { migration.up } if migration
+      yield
+    ensure
+      ActiveRecord::Migration.verbose = verbose_was
+    end
   end
 end
